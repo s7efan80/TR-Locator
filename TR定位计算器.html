@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TR定位计算器 </title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #000; color: #e6f1ff; font-family: "Microsoft YaHei", Arial, sans-serif; }
+        .card { background-color: #121212; border-color: #1e1e1e; }
+        .form-control, .form-check-input { background-color: #1a1a1a; color: #e6f1ff; border-color: #333; }
+        .form-control:focus { background-color: #1a1a1a; color: #e6f1ff; border-color: #4c8bf5; box-shadow: 0 0 0 .2rem rgba(76,139,245,.25); }
+        .btn-primary { background-color: #375a7f; border-color: #375a7f; }
+        .btn-secondary { background-color: #6c757d; border-color: #6c757d; }
+        .mono { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .switch-row .form-check { margin-right: 10px; }
+        :root { --text-primary: #e6f1ff; --text-secondary: #cfd8e3; }
+        h2, h5.card-title, .fw-bold, .col-form-label, .form-label, label, .form-check-label { color: var(--text-primary) !important; }
+        #result_source, #result_distances, #result_times { color: var(--text-primary); }
+        .small-note { color: var(--text-secondary); font-size: 0.9rem; }
+        .legend-note { color: #9aa4af; font-size: 0.85rem; }
+        .form-control::placeholder { color: #aab4c5; opacity: 1; }
+        
+        /* 模型尺寸行内的 X/Y/Z 深色主题适配 */
+        .model-size-row .col-1,
+        .model-size-row .col-1 > *,
+        .model-size-row .axis-tag {
+            color: #e6f1ff !important;   /* 与深色主题其它文字一致 */
+            font-weight: 600;
+            letter-spacing: .5px;
+        }
+    </style>
+    <!--
+        说明：
+        - 本文件纯前端实现，脱离 Python/Dash 服务器即可独立运行。
+        - 依赖：Plotly.js 与 Bootstrap 通过 CDN 加载。如需完全离线，请将相关 JS/CSS 资源下载后改为本地引用。
+    -->
+</head>
+<body>
+<div class="container-fluid" style="max-width: 1400px; padding: 10px;">
+    <h2 class="text-center my-2">TR定位计算器</h2>
+
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">配置与传感器输入</h5>
+
+                    <div class="mb-1 fw-bold">模型尺寸（cm）：</div>
+                    <div class="row mb-3 align-items-center model-size-row">
+                        <div class="col-1 text-end">X</div>
+                        <div class="col-3"><input id="xmax" type="number" class="form-control" value="500" placeholder="X 最大值" title="X 最大值 (cm)"></div>
+                        <div class="col-1 text-end">Y</div>
+                        <div class="col-3"><input id="ymax" type="number" class="form-control" value="300" placeholder="Y 最大值" title="Y 最大值 (cm)"></div>
+                        <div class="col-1 text-end">Z</div>
+                        <div class="col-3"><input id="zmax" type="number" class="form-control" value="200" placeholder="Z 最大值" title="Z 最大值 (cm)"></div>
+                    </div>
+
+                    <div class="fw-bold">传感器坐标 (cm)：</div>
+                    <div id="sensorInputs" class="mb-2"></div>
+
+                    <hr>
+                    <div class="fw-bold">时差 t_ij (ns)：</div>
+                    <div class="row mb-1">
+                        <label class="col-2 col-form-label">t12</label>
+                         <div class="col-4"><input id="t12" type="number" step="0.01" value="0" class="form-control" placeholder="t12 (ns)" title="t12 (ns)"></div>
+                        <label class="col-2 col-form-label">t13</label>
+                         <div class="col-4"><input id="t13" type="number" step="0.01" value="0" class="form-control" placeholder="t13 (ns)" title="t13 (ns)"></div>
+                    </div>
+                    <div class="row mb-1">
+                        <label class="col-2 col-form-label">t14</label>
+                         <div class="col-4"><input id="t14" type="number" step="0.01" value="0" class="form-control" placeholder="t14 (ns)" title="t14 (ns)"></div>
+                        <label class="col-2 col-form-label">t23</label>
+                         <div class="col-4"><input id="t23" type="number" step="0.01" value="0" class="form-control" placeholder="t23 (ns)" title="t23 (ns)"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <label class="col-2 col-form-label">t24</label>
+                         <div class="col-4"><input id="t24" type="number" step="0.01" value="0" class="form-control" placeholder="t24 (ns)" title="t24 (ns)"></div>
+                        <label class="col-2 col-form-label">t34</label>
+                         <div class="col-4"><input id="t34" type="number" step="0.01" value="0" class="form-control" placeholder="t34 (ns)" title="t34 (ns)"></div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <label class="col-6 col-form-label">波速 v (cm/ns)</label>
+                         <div class="col-6"><input id="v" type="number" step="0.01" value="20" class="form-control" placeholder="v (cm/ns)" title="波速 v (cm/ns)"></div>
+                    </div>
+
+                    <hr>
+                    <div class="fw-bold">输入放电源坐标 (cm)：</div>
+                    <div class="row mb-3">
+                        <div class="col-4"><input id="source_x" type="number" placeholder="X 坐标" title="放电源 X 坐标 (cm)" class="form-control"></div>
+                        <div class="col-4"><input id="source_y" type="number" placeholder="Y 坐标" title="放电源 Y 坐标 (cm)" class="form-control"></div>
+                        <div class="col-4"><input id="source_z" type="number" placeholder="Z 坐标" title="放电源 Z 坐标 (cm)" class="form-control"></div>
+                    </div>
+
+                    <div class="switch-row mb-2">
+                        <div class="form-check form-switch d-inline-block me-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="show_line" checked>
+                            <label class="form-check-label" for="show_line">显示连线</label>
+                        </div>
+                        <div class="form-check form-switch d-inline-block me-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="show_arrow" checked>
+                            <label class="form-check-label" for="show_arrow">显示箭头</label>
+                        </div>
+                        <div class="form-check form-switch d-inline-block me-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="show_label" checked>
+                            <label class="form-check-label" for="show_label">显示到达时间标签</label>
+                        </div>
+                    </div>
+                    <div class="switch-row mb-3">
+                        <div class="form-check form-switch d-inline-block me-3">
+                            <input class="form-check-input" type="checkbox" role="switch" id="show_distance" checked>
+                            <label class="form-check-label" for="show_distance">显示距离标签</label>
+                        </div>
+                    </div>
+
+                    <button id="calc_btn" class="btn btn-primary w-100 mb-2">计算放电源位置</button>
+                    <button id="calc_tbtn" class="btn btn-secondary w-100">根据放电源反算时差</button>
+
+                    <div id="warning_area" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">计算结果</h5>
+                    <div id="result_source" class="fw-bold mb-2"></div>
+                    <div id="result_distances" class="mono mb-2"></div>
+                    <div id="result_times" class="mono mb-2"></div>
+                    <hr>
+                    <div class="small-note">说明：到达时间 t_i = 距离 / 波速 (单位 ns)。</div>
+                    <div id="graph_3d" style="height: 70vh; width: 100%; margin-top: 10px;"></div>
+                    <div class="text-center small-note mt-2">注：绘图为第一象限正坐标系显示（仅用于可视化，不改变输入字段）</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 常量与默认值
+const DEFAULT_RANGE = [500, 300, 200];
+const DEFAULT_COORDS = [
+    [500.0, 0.0, 0.0],
+    [0.0, 300.0, 0.0],
+    [0.0, 0.0, 200.0],
+    [500.0, 300.0, 200.0],
+];
+const DEFAULT_T = { t12: 0, t13: 0, t14: 0, t23: 0, t24: 0, t34: 0 };
+const DEFAULT_V = 20.0; // cm/ns
+const TIME_TOL = 0.05; // ns，校验容差
+
+// UI 初始化：传感器表单
+function initSensorInputs() {
+    const container = document.getElementById('sensorInputs');
+    container.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'row mb-1';
+    header.innerHTML = `
+        <div class="col-2"></div>
+        <div class="col-3 text-center fw-bold">X</div>
+        <div class="col-3 text-center fw-bold">Y</div>
+        <div class="col-3 text-center fw-bold">Z</div>
+    `;
+    container.appendChild(header);
+    DEFAULT_COORDS.forEach((coord, i) => {
+        const row = document.createElement('div');
+        row.className = 'row mb-1 align-items-center';
+        row.innerHTML = `
+            <label class="col-2 fw-bold">p${i+1}</label>
+            <div class="col-3"><input id="x${i+1}" type="number" class="form-control" value="${coord[0]}"></div>
+            <div class="col-3"><input id="y${i+1}" type="number" class="form-control" value="${coord[1]}"></div>
+            <div class="col-3"><input id="z${i+1}" type="number" class="form-control" value="${coord[2]}"></div>
+        `;
+        container.appendChild(row);
+    });
+}
+
+// 工具函数
+function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+function vecNorm(dx, dy, dz) { return Math.hypot(dx, dy, dz); }
+ function buildTextfont(size, color = '#e6f1ff') { const f = { size: size|0, family: "Microsoft YaHei, Arial, sans-serif", color }; return f; }
+
+// 可视化：吸附到内表面，避免文字被遮挡
+function axisSnapInner(value, maxValue, eps, tol=1e-9) {
+    if (maxValue == null || maxValue <= 0) return value;
+    const v = Math.max(0, Math.min(value, maxValue));
+    if (Math.abs(v - 0) <= tol) return Math.min(maxValue, eps);
+    if (Math.abs(v - maxValue) <= tol) return Math.max(0, maxValue - eps);
+    return v;
+}
+function snapPointToInnerSurface(point, xmax, ymax, zmax) {
+    function eps(m) { if (m == null) return 0.5; return Math.min(Math.max(m * 0.01, 0.5), m * 0.05); }
+    const ex = eps(xmax), ey = eps(ymax), ez = eps(zmax);
+    const sx = axisSnapInner(point[0], xmax, ex);
+    const sy = axisSnapInner(point[1], ymax, ey);
+    const sz = axisSnapInner(point[2], zmax, ez);
+    return { x: sx, y: sy, z: sz, ex, ey, ez };
+}
+
+// 目标函数：对 S = (x,y,z) 最小化残差平方和；t_e 对于给定 S 可解析
+function objectiveForS(S, Ps, t_arr, v) {
+    const d = Ps.map(p => vecNorm(p[0]-S[0], p[1]-S[1], p[2]-S[2]));
+    // t_e = (1/(4v)) * sum_i (||Pi - S|| - v*ti)
+    const sum_term = d.reduce((acc, di, i) => acc + (di - v * t_arr[i]), 0);
+    const te = sum_term / (v * Ps.length);
+    let rss = 0;
+    for (let i = 0; i < Ps.length; i++) {
+        const di_calc = v * (t_arr[i] - te);
+        const ri = d[i] - di_calc;
+        rss += ri * ri;
+    }
+    return { rss, te };
+}
+
+// Nelder-Mead 简单实现（3 维，稳健但非最快）
+function nelderMead(f, x0, step=10, maxIter=300, tol=1e-6) {
+    const n = x0.length;
+    let simplex = [x0.slice()];
+    for (let i = 0; i < n; i++) {
+        const xi = x0.slice();
+        xi[i] += step;
+        simplex.push(xi);
+    }
+    function sortByF() { simplex.sort((a,b) => f(a) - f(b)); }
+    sortByF();
+    let iter = 0;
+    while (iter++ < maxIter) {
+        sortByF();
+        const best = simplex[0];
+        const worst = simplex[n];
+        const secondWorst = simplex[n-1];
+        // 收敛判据：顶点函数值范围
+        const fbest = f(best), fworst = f(worst);
+        if (Math.abs(fworst - fbest) <= tol) break;
+        // 质心（除去最差点）
+        const centroid = new Array(n).fill(0);
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) centroid[j] += simplex[i][j];
+        }
+        for (let j = 0; j < n; j++) centroid[j] /= n;
+        // 反射
+        const alpha = 1, gamma = 2, rho = 0.5, sigma = 0.5;
+        const xr = centroid.map((c, j) => c + alpha * (c - worst[j]));
+        const fr = f(xr);
+        if (fr < f(secondWorst)) {
+            if (fr < fbest) {
+                // 扩展
+                const xe = centroid.map((c, j) => c + gamma * (xr[j] - c));
+                const fe = f(xe);
+                simplex[n] = fe < fr ? xe : xr;
+            } else {
+                simplex[n] = xr;
+            }
+        } else {
+            // 收缩
+            const xc = centroid.map((c, j) => c + rho * (worst[j] - c));
+            const fc = f(xc);
+            if (fc < fworst) {
+                simplex[n] = xc;
+            } else {
+                // 缩小
+                for (let i = 1; i < simplex.length; i++) {
+                    for (let j = 0; j < n; j++) simplex[i][j] = best[j] + sigma * (simplex[i][j] - best[j]);
+                }
+            }
+        }
+    }
+    sortByF();
+    return simplex[0];
+}
+
+// 计算源位置（最小二乘，求解 S；t_e 解析）
+function computeSourceLeastSquares(P1, P2, P3, P4, t12, t13, t14, t23, t24, t34, v) {
+    const Ps = [P1, P2, P3, P4];
+    const t1 = 0.0;
+    const t2 = t1 - (isFinite(t12)? t12: 0);
+    const t3 = t1 - (isFinite(t13)? t13: 0);
+    const t4 = t1 - (isFinite(t14)? t14: 0);
+    const t_arr = [t1, t2, t3, t4];
+    const x0 = [0,1,2].map(k => (P1[k] + P2[k] + P3[k] + P4[k]) / 4);
+    const f = (S) => objectiveForS(S, Ps, t_arr, v).rss;
+    try {
+        const S = nelderMead(f, x0, 0.05 * Math.max(1, ...[P1,P2,P3,P4].flat()), 300, 1e-8);
+        return S;
+    } catch (e) {
+        return x0;
+    }
+}
+
+// 校验与告警
+function addAlert(container, html, color) {
+    const div = document.createElement('div');
+    div.className = `alert alert-${color} mt-2`;
+    div.innerHTML = html;
+    container.appendChild(div);
+}
+
+// 数据读写
+function readInputs() {
+    const xmax = parseFloat(document.getElementById('xmax').value) || DEFAULT_RANGE[0];
+    const ymax = parseFloat(document.getElementById('ymax').value) || DEFAULT_RANGE[1];
+    const zmax = parseFloat(document.getElementById('zmax').value) || DEFAULT_RANGE[2];
+    const coords = [];
+    for (let i = 1; i <= 4; i++) {
+        const x = parseFloat(document.getElementById(`x${i}`).value);
+        const y = parseFloat(document.getElementById(`y${i}`).value);
+        const z = parseFloat(document.getElementById(`z${i}`).value);
+        coords.push([x, y, z]);
+    }
+    const t12 = parseFloat(document.getElementById('t12').value);
+    const t13 = parseFloat(document.getElementById('t13').value);
+    const t14 = parseFloat(document.getElementById('t14').value);
+    const t23 = parseFloat(document.getElementById('t23').value);
+    const t24 = parseFloat(document.getElementById('t24').value);
+    const t34 = parseFloat(document.getElementById('t34').value);
+    const v = parseFloat(document.getElementById('v').value) || DEFAULT_V;
+    const showLine = document.getElementById('show_line').checked;
+    const showArrow = document.getElementById('show_arrow').checked;
+    const showLabel = document.getElementById('show_label').checked;
+    const showDistance = document.getElementById('show_distance').checked;
+    const sx = document.getElementById('source_x').value;
+    const sy = document.getElementById('source_y').value;
+    const sz = document.getElementById('source_z').value;
+    const sourceInput = (sx !== '' && sy !== '' && sz !== '') ? [parseFloat(sx), parseFloat(sy), parseFloat(sz)] : null;
+    return { xmax, ymax, zmax, coords, t12, t13, t14, t23, t24, t34, v, showLine, showArrow, showLabel, showDistance, sourceInput };
+}
+
+function writeResults(S, coords, v) {
+    const resultSource = document.getElementById('result_source');
+    const resultDistances = document.getElementById('result_distances');
+    const resultTimes = document.getElementById('result_times');
+    if (!S) { resultSource.textContent = ''; resultDistances.textContent=''; resultTimes.textContent=''; return; }
+    const distances = coords.map(p => vecNorm(p[0]-S[0], p[1]-S[1], p[2]-S[2]));
+    const times = distances.map(d => d / v);
+    resultSource.textContent = `放电源位置: (${S[0].toFixed(3)}, ${S[1].toFixed(3)}, ${S[2].toFixed(3)}) cm`;
+    resultDistances.textContent = distances.map((d,i)=>`d${i+1}: ${d.toFixed(2)} cm`).join('  |  ');
+    resultTimes.textContent = times.map((t,i)=>`t${i+1}: ${t.toFixed(2)} ns`).join('  |  ');
+}
+
+// 3D 绘图
+function drawFigure(S, inputs) {
+    const { xmax, ymax, zmax, coords, v, showLine, showArrow, showLabel, showDistance } = inputs;
+    const minCoords = coords.reduce((acc,p)=>[Math.min(acc[0],p[0]), Math.min(acc[1],p[1]), Math.min(acc[2],p[2])],[Infinity,Infinity,Infinity]);
+    const offset = [0,1,2].map(i => minCoords[i] < 0 ? -minCoords[i] : 0);
+    const plotCoords = coords.map(p => [p[0]+offset[0], p[1]+offset[1], p[2]+offset[2]]);
+    const plotS = S ? [S[0]+offset[0], S[1]+offset[1], S[2]+offset[2]] : null;
+    let plotSLabel = null;
+    if (plotS) {
+        plotSLabel = plotS.slice();
+        plotSLabel[2] = Math.min(plotSLabel[2] + 0.05 * zmax, zmax * 0.98);
+    }
+    const colors = ["royalblue", "tomato", "mediumseagreen", "mediumpurple"];
+    const data = [];
+
+    // 透明立方体
+    (function addCube(){
+        const vertices = [
+            [0,0,0],[xmax,0,0],[xmax,ymax,0],[0,ymax,0],
+            [0,0,zmax],[xmax,0,zmax],[xmax,ymax,zmax],[0,ymax,zmax]
+        ];
+        const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+        const ex=[],ey=[],ez=[];
+        for (const e of edges) {
+            ex.push(vertices[e[0]][0], vertices[e[1]][0], null);
+            ey.push(vertices[e[0]][1], vertices[e[1]][1], null);
+            ez.push(vertices[e[0]][2], vertices[e[1]][2], null);
+        }
+        data.push({
+            type: 'scatter3d', mode: 'lines', x: ex, y: ey, z: ez,
+            line: { color: 'rgba(255,255,255,0.05)', width: 2 }, opacity: 0.05,
+            name: '模型立方体', hoverinfo: 'skip', showlegend: true
+        });
+    })();
+
+    // 原点标识（吸附）
+    (function addOrigin(){
+        const s = snapPointToInnerSurface([0,0,0], xmax, ymax, zmax);
+        data.push({ type: 'scatter3d', mode: 'markers+text', x:[s.x], y:[s.y], z:[s.z],
+            marker: { size: 5, color: '#ffd166' }, name: 'Origin', text:['Origin (0,0,0)'],
+            textposition: 'top center', textfont: buildTextfont(12,'#ffd166'), hovertemplate: 'Origin (0,0,0)<extra></extra>', showlegend: false });
+    })();
+
+    // 传感器点（底层仅 marker）
+    for (let i=0;i<4;i++){
+        const s = snapPointToInnerSurface(plotCoords[i], xmax, ymax, zmax);
+        data.push({ type: 'scatter3d', mode: 'markers', x:[s.x], y:[s.y], z:[s.z],
+            marker:{ size:6, color: colors[i] }, name:`P${i+1}`,
+            hovertemplate:`P${i+1}<br>(${coords[i][0].toFixed(1)},${coords[i][1].toFixed(1)},${coords[i][2].toFixed(1)})<extra></extra>` });
+    }
+
+    // Source 点与文本
+    if (plotSLabel){
+        data.push({ type:'scatter3d', mode:'markers', x:[plotSLabel[0]], y:[plotSLabel[1]], z:[plotSLabel[2]],
+            marker:{ size:8, color:'red' }, name:'Source', hovertemplate:`Source<br>(${S[0].toFixed(2)},${S[1].toFixed(2)},${S[2].toFixed(2)})<extra></extra>` });
+        data.push({ type:'scatter3d', mode:'text', x:[plotSLabel[0]], y:[plotSLabel[1]], z:[plotSLabel[2]],
+            text:[`Source (${S[0].toFixed(2)},${S[1].toFixed(2)},${S[2].toFixed(2)})`], textposition:'bottom center', textfont: buildTextfont(18,'red'), name:'Source_label', hoverinfo:'skip', showlegend:false });
+    }
+
+    // 连线 / 箭头 / 标签
+    let distances=[], times=[];
+    if (S){
+        distances = coords.map(p => vecNorm(p[0]-S[0], p[1]-S[1], p[2]-S[2]));
+        times = distances.map(d => d / v);
+    }
+    const maxDim = Math.max(xmax, ymax, zmax);
+    const coneSize = 0.045 * maxDim;
+    for (let i=0;i<4;i++){
+        if (plotS && showLine){
+            data.push({ type:'scatter3d', mode:'lines', x:[plotS[0], plotCoords[i][0]], y:[plotS[1], plotCoords[i][1]], z:[plotS[2], plotCoords[i][2]],
+                line:{ color: colors[i], width: 4 }, opacity: 0.55, name:`S→P${i+1}`, hoverinfo:'skip', showlegend:false });
+        }
+        if (plotS && showArrow){
+            const u = plotCoords[i][0] - plotS[0];
+            const v_ = plotCoords[i][1] - plotS[1];
+            const w = plotCoords[i][2] - plotS[2];
+            const tailRatio = 0.85;
+            const px = plotS[0] + tailRatio * u;
+            const py = plotS[1] + tailRatio * v_;
+            const pz = plotS[2] + tailRatio * w;
+            data.push({ type:'cone', x:[px], y:[py], z:[pz], u:[u], v:[v_], w:[w], anchor:'tail', showscale:false,
+                colorscale:[[0, colors[i]],[1, colors[i]]], sizemode:'absolute', sizeref: coneSize, name:`arrow${i+1}`, hoverinfo:'skip', opacity:0.55 });
+        }
+        if (plotS && showLabel){
+            const mid = [(plotS[0]+plotCoords[i][0])/2, (plotS[1]+plotCoords[i][1])/2, (plotS[2]+plotCoords[i][2])/2];
+            const label = `t${i+1} = ${times[i].toFixed(2)} ns`;
+            data.push({ type:'scatter3d', mode:'text', x:[mid[0]], y:[mid[1]], z:[mid[2]], text:[label], textfont: buildTextfont(14, colors[i]), showlegend:false, hoverinfo:'skip', name:`t${i+1}` });
+        }
+        if (plotS && showDistance){
+            const p70 = [ plotS[0] + 0.7*(plotCoords[i][0]-plotS[0]), plotS[1] + 0.7*(plotCoords[i][1]-plotS[1]), plotS[2] + 0.7*(plotCoords[i][2]-plotS[2]) ];
+            const label = `d${i+1} = ${distances[i].toFixed(2)} cm`;
+            data.push({ type:'scatter3d', mode:'text', x:[p70[0]], y:[p70[1]], z:[p70[2]], text:[label], textfont: buildTextfont(14, colors[i]), showlegend:false, hoverinfo:'skip', name:`d${i+1}` });
+        }
+    }
+
+    // 再叠一层气泡（文字）保持上层
+    for (let i=0;i<4;i++){
+        const s = snapPointToInnerSurface(plotCoords[i], xmax, ymax, zmax);
+        data.push({ type:'scatter3d', mode:'markers+text', x:[s.x], y:[s.y], z:[s.z], marker:{ size:6, color: colors[i] }, name:`P${i+1}_overlay`,
+            text:[`P${i+1}<br>(${coords[i][0].toFixed(1)},${coords[i][1].toFixed(1)},${coords[i][2].toFixed(1)})`], textposition:'top center', textfont: buildTextfont(16, colors[i]), hoverinfo:'skip', showlegend:false });
+    }
+
+     const layout = {
+         scene: {
+             xaxis: { title: { text: 'X (cm)', font: buildTextfont(12) }, tickfont: buildTextfont(12), range: [0, xmax], gridcolor: 'rgba(255,255,255,0.08)', zerolinecolor: 'rgba(255,255,255,0.25)', showspikes: true, spikesides: false, backgroundcolor: 'rgba(0,0,0,0)' },
+             yaxis: { title: { text: 'Y (cm)', font: buildTextfont(12) }, tickfont: buildTextfont(12), range: [0, ymax], gridcolor: 'rgba(255,255,255,0.08)', zerolinecolor: 'rgba(255,255,255,0.25)', showspikes: true, spikesides: false, backgroundcolor: 'rgba(0,0,0,0)' },
+             zaxis: { title: { text: 'Z (cm)', font: buildTextfont(12) }, tickfont: buildTextfont(12), range: [0, zmax], gridcolor: 'rgba(255,255,255,0.08)', zerolinecolor: 'rgba(255,255,255,0.25)', showspikes: true, spikesides: false, backgroundcolor: 'rgba(0,0,0,0)' },
+             bgcolor: 'rgba(0,0,0,0)', aspectmode: 'cube', camera: { eye: {x:1.6,y:1.6,z:1.2}, projection: { type: 'orthographic' } }, uirevision: 'constant'
+         },
+         legend: { itemsizing: 'constant', orientation: 'v', x: 0.98, y: 0.98, xanchor: 'right', yanchor: 'top', bgcolor: 'rgba(0,0,0,0)' },
+         margin: { l:0, r:0, t:20, b:0 }, paper_bgcolor: 'rgba(0,0,0,0)', template: 'plotly_dark', uirevision: 'constant',
+         font: buildTextfont(12)
+     };
+
+    Plotly.newPlot('graph_3d', data, layout, { displayModeBar: 'hover', responsive: true, scrollZoom: true });
+}
+
+// 逻辑控制
+let storeS = null; // 记忆最近一次计算结果
+
+function validateTimesAndWarn(inputs) {
+    const w = document.getElementById('warning_area');
+    w.innerHTML = '';
+    const { t12, t13, t14, t23, t24, t34, v, xmax, ymax, zmax, coords } = inputs;
+    if (!isFinite(v) || v <= 0) {
+        addAlert(w, '波速无效，已使用默认值20 cm/ns', 'warning');
+        inputs.v = DEFAULT_V;
+    }
+    if ([t12, t24, t14].some(x => !isFinite(x))) {
+        addAlert(w, '请填写 t12, t24, t14 等时差。', 'danger');
+    } else {
+        if (Math.abs((t12 + t24) - t14) <= TIME_TOL) addAlert(w, '校验通过：t14 = t12 + t24', 'success');
+        else addAlert(w, `校验不通过：t14 (${t14}) ≠ t12 + t24 (${(t12 + t24)})`, 'danger');
+    }
+    if ([t13, t23, t12].some(x => !isFinite(x))) addAlert(w, '无法校验 t13 = t12 + t23（存在空值）', 'warning');
+    else if (Math.abs((t12 + t23) - t13) <= TIME_TOL) addAlert(w, '校验通过：t13 = t12 + t23', 'success');
+    else addAlert(w, `校验不通过：t13 (${t13}) ≠ t12 + t23 (${(t12 + t23)})`, 'danger');
+    if ([t34, t14, t13].some(x => !isFinite(x))) addAlert(w, '无法校验 t34 = t14 - t13（存在空值）', 'warning');
+    else if (Math.abs((t14 - t13) - t34) <= TIME_TOL) addAlert(w, '校验通过：t34 = t14 - t13', 'success');
+    else addAlert(w, `校验不通过：t34 (${t34}) ≠ t14 - t13 (${(t14 - t13)})`, 'danger');
+
+    // 传感器位置提示（应在表面）
+    function isWithin(x,y,z,X,Y,Z){ return (0<=x&&x<=X)&&(0<=y&&y<=Y)&&(0<=z&&z<=Z); }
+    function isOnSurface(x,y,z,X,Y,Z,tol=1e-9){
+        const within = isWithin(x,y,z,X,Y,Z);
+        const onFace = (Math.abs(x-0)<=tol||Math.abs(x-X)<=tol||Math.abs(y-0)<=tol||Math.abs(y-Y)<=tol||Math.abs(z-0)<=tol||Math.abs(z-Z)<=tol);
+        return within && onFace;
+    }
+    const inside = [];
+    coords.forEach((p,i)=>{ if (isWithin(p[0],p[1],p[2],xmax,ymax,zmax) && !isOnSurface(p[0],p[1],p[2],xmax,ymax,zmax)) inside.push(`P${i+1}(${p[0].toFixed(1)},${p[1].toFixed(1)},${p[2].toFixed(1)})`); });
+    if (inside.length) addAlert(w, `提示：传感器通常应布置在模型表面，以下传感器位于模型内部：<ul style="margin-bottom:0">${inside.map(s=>`<li>${s}</li>`).join('')}</ul>`, 'warning');
+    if (inside.length) addAlert(w, `传感器位于模型内部而非表面：${inside.join(', ')}。`, 'warning');
+}
+
+function render() {
+    const inputs = readInputs();
+    drawFigure(storeS, inputs);
+    if (storeS) writeResults(storeS, inputs.coords, inputs.v);
+}
+
+// 事件绑定
+function bindRealtimeInputs() {
+    const ids = ['xmax','ymax','zmax','x1','y1','z1','x2','y2','z2','x3','y3','z3','x4','y4','z4','show_line','show_arrow','show_label','show_distance'];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('input', render); });
+}
+
+function onCalcBtn() {
+    const inputs = readInputs();
+    validateTimesAndWarn(inputs);
+    // 计算 S
+    const S = computeSourceLeastSquares(inputs.coords[0], inputs.coords[1], inputs.coords[2], inputs.coords[3], inputs.t12, inputs.t13, inputs.t14, inputs.t23, inputs.t24, inputs.t34, inputs.v);
+    storeS = S;
+    drawFigure(storeS, inputs);
+    writeResults(storeS, inputs.coords, inputs.v);
+    // 边界提示
+    function isWithin(x,y,z,X,Y,Z){ return (0<=x&&x<=X)&&(0<=y&&y<=Y)&&(0<=z&&z<=Z); }
+    if (!isWithin(storeS[0],storeS[1],storeS[2], inputs.xmax, inputs.ymax, inputs.zmax)) {
+        addAlert(document.getElementById('warning_area'), `放电源位置 (${storeS[0].toFixed(2)}, ${storeS[1].toFixed(2)}, ${storeS[2].toFixed(2)}) 不在模型范围内 (0~${inputs.xmax}, 0~${inputs.ymax}, 0~${inputs.zmax})。`, 'danger');
+    }
+}
+
+function onCalcTBtn() {
+    const inputs = readInputs();
+    const w = document.getElementById('warning_area');
+    w.innerHTML = '';
+    if (!inputs.sourceInput) {
+        addAlert(w, '请填写放电源坐标 (X,Y,Z) 以反算时差。', 'danger');
+        return;
+    }
+    const S = inputs.sourceInput;
+    const distances = inputs.coords.map(p => vecNorm(p[0]-S[0], p[1]-S[1], p[2]-S[2]));
+    const times = distances.map(d => d / inputs.v);
+    // 写回时差，保留2位
+    document.getElementById('t12').value = (times[0] - times[1]).toFixed(2);
+    document.getElementById('t13').value = (times[0] - times[2]).toFixed(2);
+    document.getElementById('t14').value = (times[0] - times[3]).toFixed(2);
+    document.getElementById('t23').value = (times[1] - times[2]).toFixed(2);
+    document.getElementById('t24').value = (times[1] - times[3]).toFixed(2);
+    document.getElementById('t34').value = (times[2] - times[3]).toFixed(2);
+    addAlert(w, '时差根据放电源位置反算成功', 'success');
+    storeS = S.slice();
+    drawFigure(storeS, inputs);
+    writeResults(storeS, inputs.coords, inputs.v);
+}
+
+// 初始化
+window.addEventListener('DOMContentLoaded', () => {
+    initSensorInputs();
+    bindRealtimeInputs();
+    document.getElementById('calc_btn').addEventListener('click', onCalcBtn);
+    document.getElementById('calc_tbtn').addEventListener('click', onCalcTBtn);
+    // 首次渲染（无 S，仅显示坐标系和传感器）
+    render();
+});
+</script>
+</body>
+</html>
+
+
